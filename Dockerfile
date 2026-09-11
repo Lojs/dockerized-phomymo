@@ -7,5 +7,6 @@ LABEL org.opencontainers.image.source="https://github.com/transcriptionstream/ph
 RUN rm -rf /usr/share/nginx/html/*
 
 COPY src/web/ /usr/share/nginx/html/
+COPY LICENSE /usr/share/nginx/html/LICENSE
 
 EXPOSE 80
