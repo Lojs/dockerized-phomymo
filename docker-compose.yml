@@ -1,0 +1,7 @@
+services:
+  phomymo:
+    image: ghcr.io/lojs/dockerized-phomymo:latest
+    container_name: phomymo
+    ports:
+      - "80:80"
+    restart: unless-stopped
