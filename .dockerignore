@@ -1,0 +1,8 @@
+.git
+.github
+node_modules
+tests
+docs
+README.md
+screenshot.png
+screenshot-mobile.png
