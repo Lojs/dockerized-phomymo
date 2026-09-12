@@ -25,6 +25,8 @@ jobs:
           from pathlib import Path
           import re
 
+          PX_PER_MM = 8
+
           canvas = Path('src/web/canvas.js')
           text = canvas.read_text()
 
@@ -38,7 +40,7 @@ jobs:
 
           old_high = "const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, 'left', ditherMode);"
           new_high = "const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;\n      const data = this._pixelsToRaster(pixels, width, height, outputWidthBytes, rotateForPrint ? 'left' : alignment, ditherMode);"
-          if old_high in block:
+          if old_high in block and 'const outputWidthBytes' not in block:
               block = block.replace(old_high, new_high, 1)
 
           old_normal = "const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, alignment, ditherMode);"
@@ -52,10 +54,51 @@ jobs:
 
           app = Path('src/web/app.js')
           app_text = app.read_text()
+
+          # Remove the temporary landscape-only alignment override everywhere.
           app_text = app_text.replace(
               "const rasterAlignment =\n      state.orientation === 'landscape' ? 'left' : printerAlignment;",
               "const rasterAlignment = printerAlignment;"
           )
+
+          # Add a single, explicit geometry transform used when the user switches orientation.
+          orientation_marker = "function updateRendererDimensions() {"
+          if 'function transformElementsForOrientation(' not in app_text:
+              helper = '''function transformElementsForOrientation(elements, fromOrientation, toOrientation, widthMm, heightMm) {\n  if (fromOrientation === toOrientation || !elements.length) return elements;\n\n  const widthPx = Math.round(widthMm * PX_PER_MM);\n  const heightPx = Math.round(heightMm * PX_PER_MM);\n  const portraitToLandscape = fromOrientation === 'portrait' && toOrientation === 'landscape';\n\n  return elements.map((element) => {\n    const centerX = element.x + element.width / 2;\n    const centerY = element.y + element.height / 2;\n\n    // Rotate the complete design around the label center. This keeps the design\n    // visually identical after print-time rotation, while preserving relative layout.\n    const nextCenterX = portraitToLandscape ? heightPx - centerY : centerY;\n    const nextCenterY = portraitToLandscape ? centerX : widthPx - centerX;\n    const nextRotation = portraitToLandscape\n      ? (element.rotation || 0) + 90\n      : (element.rotation || 0) - 90;\n\n    return {\n      ...element,\n      x: nextCenterX - element.height / 2,\n      y: nextCenterY - element.width / 2,\n      width: element.height,\n      height: element.width,\n      rotation: ((nextRotation % 360) + 360) % 360,\n    };\n  });\n}\n\n'''
+              if orientation_marker not in app_text:
+                  raise SystemExit('Could not locate updateRendererDimensions')
+              app_text = app_text.replace(orientation_marker, helper + orientation_marker, 1)
+
+          # Replace orientation change handler with a geometry-preserving version.
+          orientation_pattern = re.compile(
+              r"  // Design orientation\n.*?\n\n\n  // P12/A30 label length adjust buttons",
+              re.S,
+          )
+          orientation_replacement = '''  // Design orientation\n  $('#orientation').addEventListener('change', (event) => {\n    const nextOrientation = event.target.value;\n\n    if (state.labelSize.round) {\n      state.orientation = 'portrait';\n      event.target.value = 'portrait';\n      return;\n    }\n\n    if (nextOrientation !== state.orientation) {\n      saveHistory();\n      state.elements = transformElementsForOrientation(\n        state.elements,\n        state.orientation,\n        nextOrientation,\n        state.labelSize.width,\n        state.labelSize.height\n      );\n      state.selectedIds = [];\n      state.alignmentGuides = [];\n      state.renderer.clearCache();\n      state.orientation = nextOrientation;\n    }\n\n    updateRendererDimensions();\n    zoomToFitIfNeeded();\n    render();\n  });\n\n\n  // P12/A30 label length adjust buttons'''
+          match = orientation_pattern.search(app_text)
+          if not match:
+              raise SystemExit('Could not locate orientation event handler')
+          app_text = app_text[:match.start()] + orientation_replacement + app_text[match.end():]
+
+          # Fix batch printing references: mergedElements is the actual batch payload,
+          # and batch needs the detected printer DPI just like single-label printing.
+          batch_start = app_text.find('async function handleBatchPrint() {')
+          batch_end = app_text.find('\n}\n\n/**\n * Print single label from preview', batch_start)
+          if batch_start < 0 or batch_end < 0:
+              raise SystemExit('Could not locate handleBatchPrint')
+          batch = app_text[batch_start:batch_end]
+
+          if "const printerDpi = getPrinterDpi(deviceName, printerModel);" not in batch:
+              needle = "      const printerWidth = getPrinterWidthBytes(deviceName, printerModel);\n      const printerAlignment = getPrinterAlignment(deviceName, printerModel);"
+              replacement = "      const printerWidth = getPrinterWidthBytes(deviceName, printerModel);\n      const printerDpi = getPrinterDpi(deviceName, printerModel);\n      const printerAlignment = getPrinterAlignment(deviceName, printerModel);"
+              if needle not in batch:
+                  raise SystemExit('Could not locate batch printer config')
+              batch = batch.replace(needle, replacement, 1)
+
+          batch = batch.replace('getRasterDataRaw(elementsToRender, ditherMode)', 'getRasterDataRaw(mergedElements, ditherMode)')
+          batch = batch.replace('getRasterData(\n          elementsToRender,', 'getRasterData(\n          mergedElements,')
+
+          app_text = app_text[:batch_start] + batch + app_text[batch_end:]
           app.write_text(app_text)
           PY
 
@@ -71,7 +114,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f .github/workflows/_two_pass_repair.yml
           git add src/web/canvas.js src/web/app.js .github/workflows/_two_pass_repair.yml
-          git commit -m "Clean up landscape raster handling [skip ci]"
+          git commit -m "Clean up landscape orientation and batch printing [skip ci]"
           git push origin HEAD:dev
 
   review:
@@ -89,6 +132,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json
+          import math
           import subprocess
 
           canvas = Path('src/web/canvas.js').read_text()
@@ -96,13 +140,31 @@ jobs:
           dockerfile = Path('Dockerfile').read_text()
           printers = json.loads(Path('src/web/printers.json').read_text())
 
-          assert 'sed -i' not in dockerfile
-          assert 'rotateForPrint' in canvas
-          assert 'const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;' in canvas
-          assert "state.orientation === 'landscape' ? 'left' : printerAlignment" not in app
+          assert 'sed -i' not in dockerfile, 'Dockerfile contains a runtime source patch hack'
+          assert 'function transformElementsForOrientation(' in app, 'Orientation transform helper missing'
+          assert "state.orientation = nextOrientation;" in app, 'Orientation handler missing state update'
+          assert 'rotateForPrint' in canvas, 'Landscape print rotation path missing'
+          assert 'const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;' in canvas, 'Landscape raster width logic missing'
+          assert "state.orientation === 'landscape' ? 'left' : printerAlignment" not in app, 'Temporary landscape alignment override remains'
+
+          batch_start = app.find('async function handleBatchPrint() {')
+          batch_end = app.find('\n}\n\n/**\n * Print single label from preview', batch_start)
+          assert batch_start >= 0 and batch_end >= 0, 'Batch print function boundary missing'
+          batch = app[batch_start:batch_end]
+          assert 'const printerDpi = getPrinterDpi(deviceName, printerModel);' in batch, 'Batch printer DPI missing'
+          assert 'mergedElements' in batch, 'Batch print payload missing'
+          assert 'elementsToRender' not in batch, 'Stale batch elementsToRender reference remains'
 
           m221 = next(p for p in printers['printers'] if p['id'] == 'm221')
-          assert m221['widthBytes'] == 72
+          assert m221['widthBytes'] == 72, f"M221 capability changed: {m221['widthBytes']}"
+
+          # Geometry sanity check: portrait -> landscape -> portrait is reversible.
+          W, H = 400, 640
+          cx, cy = 100, 200
+          w, h = 80, 40
+          a = (H - cy, cx, h, w)
+          b = (a[1], W - a[0], a[3], a[2])
+          assert all(abs(x - y) < 1e-9 for x, y in zip((cx, cy, w, h), b)), (a, b)
 
           subprocess.run(['node', '--check', 'src/web/canvas.js'], check=True)
           subprocess.run(['node', '--check', 'src/web/app.js'], check=True)
