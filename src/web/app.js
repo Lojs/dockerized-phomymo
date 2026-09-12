@@ -7127,7 +7127,7 @@ function init() {
   // Create canvas renderer
   const canvas = $('#preview-canvas');
   state.renderer = new CanvasRenderer(canvas);
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
+  updateRendererDimensions();
   // Re-render when async content (barcodes, QR codes) finishes loading
   // Use requestAnimationFrame to batch multiple async loads
   let asyncRenderPending = false;
