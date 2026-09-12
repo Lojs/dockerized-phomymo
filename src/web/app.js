@@ -5015,6 +5015,7 @@ function handleExport() {
     version: 3, // Version 3 includes multi-label support
     elements: state.elements,
     labelSize: state.labelSize,
+    orientation: state.orientation,
     exportedAt: new Date().toISOString(),
   };
 
@@ -5181,7 +5182,11 @@ function handleImportFile(file) {
           $('#custom-height').value = data.labelSize.height;
         }
       }
-
+      // Load design orientation if present
+      if (data.orientation) {
+        state.orientation = data.orientation;
+        $('#orientation').value = data.orientation;
+      }
       // Load template data if present
       if (data.templateData && Array.isArray(data.templateData)) {
         state.templateData = data.templateData;
@@ -5190,7 +5195,7 @@ function handleImportFile(file) {
 
       // Clear selection and update renderer
       state.selectedIds = [];
-      state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
+      updateRendererDimensions();
       state.renderer.clearCache();
       resetHistory();
       updatePrintSize();
@@ -5303,6 +5308,8 @@ function handleLoad(name) {
 
   state.elements = design.elements || [];
   state.labelSize = design.labelSize || { width: 40, height: 30 };
+  state.orientation = design.orientation || 'portrait';
+  $('#orientation').value = state.orientation;
   state.selectedIds = [];
 
   // Restore template data if present
@@ -5357,7 +5364,7 @@ function handleLoad(name) {
       $('#custom-height').value = state.labelSize.height;
     }
 
-    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
+    updateRendererDimensions();
   }
 
   state.renderer.clearCache();
