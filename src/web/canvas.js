@@ -2333,20 +2333,22 @@ export class CanvasRenderer {
 
       // For high-DPI printers, use the specified printer width but left-align
       // (no centering) to avoid white gaps at the start edge
-      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, 'left', ditherMode);
+      const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;
+      const data = this._pixelsToRaster(pixels, width, height, outputWidthBytes, rotateForPrint ? 'left' : alignment, ditherMode);
 
       return {
         data,
-        widthBytes: printerWidthBytes,
+        widthBytes: outputWidthBytes,
         heightLines: height,
       };
     }
 
-    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, alignment, ditherMode);
+    const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;
+    const data = this._pixelsToRaster(pixels, width, height, outputWidthBytes, rotateForPrint ? 'left' : alignment, ditherMode);
 
     return {
       data,
-      widthBytes: printerWidthBytes,
+      widthBytes: outputWidthBytes,
       heightLines: height,
     };
   }

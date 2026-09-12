@@ -1134,6 +1134,33 @@ function updatePrintSize() {
   }
 }
 
+function transformElementsForOrientation(elements, fromOrientation, toOrientation, widthMm, heightMm) {
+  if (fromOrientation === toOrientation || !elements.length) return elements;
+
+  const widthPx = Math.round(widthMm * 8);
+  const heightPx = Math.round(heightMm * 8);
+  const portraitToLandscape = fromOrientation === 'portrait' && toOrientation === 'landscape';
+
+  return elements.map((element) => {
+    const centerX = element.x + element.width / 2;
+    const centerY = element.y + element.height / 2;
+    const nextCenterX = portraitToLandscape ? heightPx - centerY : centerY;
+    const nextCenterY = portraitToLandscape ? centerX : widthPx - centerX;
+    const nextRotation = portraitToLandscape
+      ? (element.rotation || 0) + 90
+      : (element.rotation || 0) - 90;
+
+    return {
+      ...element,
+      x: nextCenterX - element.height / 2,
+      y: nextCenterY - element.width / 2,
+      width: element.height,
+      height: element.width,
+      rotation: ((nextRotation % 360) + 360) % 360,
+    };
+  });
+}
+
 function updateRendererDimensions() {
   const { width, height, round } = state.labelSize;
 
@@ -1961,6 +1988,7 @@ async function handleBatchPrint() {
       // Render to raster (use raw format for rotated printers like D-series and P12)
       const deviceName = state.transport.getDeviceName?.() || '';
       const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+      const printerDpi = getPrinterDpi(deviceName, printerModel);
       const printerAlignment = getPrinterAlignment(deviceName, printerModel);
       // Force threshold mode for TSPL printers (shipping labels need crisp barcodes)
       let ditherMode = getDitherMode(mergedElements);
@@ -1974,9 +2002,9 @@ async function handleBatchPrint() {
         state.orientation === 'landscape' ? 'left' : printerAlignment;
 
       const rasterData = isRotatedPrinter(deviceName, printerModel)
-        ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
+        ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
         : state.renderer.getRasterData(
-          elementsToRender,
+          mergedElements,
           printerWidth,
           printerDpi,
           ditherMode,
@@ -2071,8 +2099,7 @@ async function handlePrintSinglePreview() {
       state.orientation === 'landscape' &&
       !isRotatedPrinter(deviceName, printerModel);
 
-    const rasterAlignment =
-      state.orientation === 'landscape' ? 'left' : printerAlignment;
+    const rasterAlignment = printerAlignment;
 
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
@@ -4826,8 +4853,7 @@ async function handlePrint() {
       state.orientation === 'landscape' &&
       !isRotatedPrinter(deviceName, printerModel);
 
-    const rasterAlignment =
-      state.orientation === 'landscape' ? 'left' : printerAlignment;
+    const rasterAlignment = printerAlignment;
 
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
@@ -7181,20 +7207,34 @@ function init() {
   $('#custom-continuous')?.addEventListener('change', handleCustomSizeChange);
 
   // Design orientation
-$('#orientation').addEventListener('change', (event) => {
-state.orientation = event.target.value;
-updateRendererDimensions();
+  $('#orientation').addEventListener('change', (event) => {
+    const nextOrientation = event.target.value;
 
-// Round labels do not use orientation
-if (state.labelSize.round) {
-  state.orientation = 'portrait';
-  $('#orientation').value = 'portrait';
-}
+    if (state.labelSize.round) {
+      state.orientation = 'portrait';
+      event.target.value = 'portrait';
+      return;
+    }
 
-zoomToFitIfNeeded();
-render();
+    if (nextOrientation !== state.orientation) {
+      saveHistory();
+      state.elements = transformElementsForOrientation(
+        state.elements,
+        state.orientation,
+        nextOrientation,
+        state.labelSize.width,
+        state.labelSize.height
+      );
+      state.selectedIds = [];
+      state.alignmentGuides = [];
+      state.renderer.clearCache();
+      state.orientation = nextOrientation;
+    }
 
-});
+    updateRendererDimensions();
+    zoomToFitIfNeeded();
+    render();
+  });
 
 
   // P12/A30 label length adjust buttons
