@@ -1,0 +1,111 @@
+name: Two-pass orientation repair
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply clean source fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          canvas = Path('src/web/canvas.js')
+          text = canvas.read_text()
+
+          start_marker = "  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto', alignment = 'center', rotateForPrint = false) {"
+          end_marker = "  /**\n   * Get canvas image data as raw raster"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate getRasterData block')
+          block = text[start:end]
+
+          old_high = "const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, 'left', ditherMode);"
+          new_high = "const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;\n      const data = this._pixelsToRaster(pixels, width, height, outputWidthBytes, rotateForPrint ? 'left' : alignment, ditherMode);"
+          if old_high in block:
+              block = block.replace(old_high, new_high, 1)
+
+          old_normal = "const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, alignment, ditherMode);"
+          new_normal = "const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;\n    const data = this._pixelsToRaster(pixels, width, height, outputWidthBytes, rotateForPrint ? 'left' : alignment, ditherMode);"
+          if old_normal in block:
+              block = block.replace(old_normal, new_normal, 1)
+
+          block = block.replace('widthBytes: printerWidthBytes,', 'widthBytes: outputWidthBytes,')
+          text = text[:start] + block + text[end:]
+          canvas.write_text(text)
+
+          app = Path('src/web/app.js')
+          app_text = app.read_text()
+          app_text = app_text.replace(
+              "const rasterAlignment =\n      state.orientation === 'landscape' ? 'left' : printerAlignment;",
+              "const rasterAlignment = printerAlignment;"
+          )
+          app.write_text(app_text)
+          PY
+
+      - name: Check syntax before commit
+        run: |
+          node --check src/web/canvas.js
+          node --check src/web/app.js
+          node --check src/web/printer.js
+
+      - name: Commit repaired source and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/_two_pass_repair.yml
+          git add src/web/canvas.js src/web/app.js .github/workflows/_two_pass_repair.yml
+          git commit -m "Clean up landscape raster handling [skip ci]"
+          git push origin HEAD:dev
+
+  review:
+    needs: repair
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repaired dev
+        uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 1
+
+      - name: Verify repaired source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+
+          canvas = Path('src/web/canvas.js').read_text()
+          app = Path('src/web/app.js').read_text()
+          dockerfile = Path('Dockerfile').read_text()
+          printers = json.loads(Path('src/web/printers.json').read_text())
+
+          assert 'sed -i' not in dockerfile
+          assert 'rotateForPrint' in canvas
+          assert 'const outputWidthBytes = rotateForPrint ? Math.ceil(width / 8) : printerWidthBytes;' in canvas
+          assert "state.orientation === 'landscape' ? 'left' : printerAlignment" not in app
+
+          m221 = next(p for p in printers['printers'] if p['id'] == 'm221')
+          assert m221['widthBytes'] == 72
+
+          subprocess.run(['node', '--check', 'src/web/canvas.js'], check=True)
+          subprocess.run(['node', '--check', 'src/web/app.js'], check=True)
+          subprocess.run(['node', '--check', 'src/web/printer.js'], check=True)
+          print('SECOND PASS: OK')
+          PY
