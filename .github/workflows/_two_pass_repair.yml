@@ -25,8 +25,6 @@ jobs:
           from pathlib import Path
           import re
 
-          PX_PER_MM = 8
-
           canvas = Path('src/web/canvas.js')
           text = canvas.read_text()
 
@@ -64,12 +62,11 @@ jobs:
           # Add a single, explicit geometry transform used when the user switches orientation.
           orientation_marker = "function updateRendererDimensions() {"
           if 'function transformElementsForOrientation(' not in app_text:
-              helper = '''function transformElementsForOrientation(elements, fromOrientation, toOrientation, widthMm, heightMm) {\n  if (fromOrientation === toOrientation || !elements.length) return elements;\n\n  const widthPx = Math.round(widthMm * PX_PER_MM);\n  const heightPx = Math.round(heightMm * PX_PER_MM);\n  const portraitToLandscape = fromOrientation === 'portrait' && toOrientation === 'landscape';\n\n  return elements.map((element) => {\n    const centerX = element.x + element.width / 2;\n    const centerY = element.y + element.height / 2;\n\n    // Rotate the complete design around the label center. This keeps the design\n    // visually identical after print-time rotation, while preserving relative layout.\n    const nextCenterX = portraitToLandscape ? heightPx - centerY : centerY;\n    const nextCenterY = portraitToLandscape ? centerX : widthPx - centerX;\n    const nextRotation = portraitToLandscape\n      ? (element.rotation || 0) + 90\n      : (element.rotation || 0) - 90;\n\n    return {\n      ...element,\n      x: nextCenterX - element.height / 2,\n      y: nextCenterY - element.width / 2,\n      width: element.height,\n      height: element.width,\n      rotation: ((nextRotation % 360) + 360) % 360,\n    };\n  });\n}\n\n'''
+              helper = '''function transformElementsForOrientation(elements, fromOrientation, toOrientation, widthMm, heightMm) {\n  if (fromOrientation === toOrientation || !elements.length) return elements;\n\n  const widthPx = Math.round(widthMm * 8);\n  const heightPx = Math.round(heightMm * 8);\n  const portraitToLandscape = fromOrientation === 'portrait' && toOrientation === 'landscape';\n\n  return elements.map((element) => {\n    const centerX = element.x + element.width / 2;\n    const centerY = element.y + element.height / 2;\n    const nextCenterX = portraitToLandscape ? heightPx - centerY : centerY;\n    const nextCenterY = portraitToLandscape ? centerX : widthPx - centerX;\n    const nextRotation = portraitToLandscape\n      ? (element.rotation || 0) + 90\n      : (element.rotation || 0) - 90;\n\n    return {\n      ...element,\n      x: nextCenterX - element.height / 2,\n      y: nextCenterY - element.width / 2,\n      width: element.height,\n      height: element.width,\n      rotation: ((nextRotation % 360) + 360) % 360,\n    };\n  });\n}\n\n'''
               if orientation_marker not in app_text:
                   raise SystemExit('Could not locate updateRendererDimensions')
               app_text = app_text.replace(orientation_marker, helper + orientation_marker, 1)
 
-          # Replace orientation change handler with a geometry-preserving version.
           orientation_pattern = re.compile(
               r"  // Design orientation\n.*?\n\n\n  // P12/A30 label length adjust buttons",
               re.S,
@@ -80,8 +77,6 @@ jobs:
               raise SystemExit('Could not locate orientation event handler')
           app_text = app_text[:match.start()] + orientation_replacement + app_text[match.end():]
 
-          # Fix batch printing references: mergedElements is the actual batch payload,
-          # and batch needs the detected printer DPI just like single-label printing.
           batch_start = app_text.find('async function handleBatchPrint() {')
           batch_end = app_text.find('\n}\n\n/**\n * Print single label from preview', batch_start)
           if batch_start < 0 or batch_end < 0:
@@ -104,9 +99,12 @@ jobs:
 
       - name: Check syntax before commit
         run: |
-          node --check src/web/canvas.js
-          node --check src/web/app.js
-          node --check src/web/printer.js
+          cp src/web/canvas.js /tmp/canvas.mjs
+          cp src/web/app.js /tmp/app.mjs
+          cp src/web/printer.js /tmp/printer.mjs
+          node --check /tmp/canvas.mjs
+          node --check /tmp/app.mjs
+          node --check /tmp/printer.mjs
 
       - name: Commit repaired source and remove temporary workflow
         run: |
@@ -132,7 +130,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json
-          import math
           import subprocess
 
           canvas = Path('src/web/canvas.js').read_text()
@@ -166,8 +163,11 @@ jobs:
           b = (a[1], W - a[0], a[3], a[2])
           assert all(abs(x - y) < 1e-9 for x, y in zip((cx, cy, w, h), b)), (a, b)
 
-          subprocess.run(['node', '--check', 'src/web/canvas.js'], check=True)
-          subprocess.run(['node', '--check', 'src/web/app.js'], check=True)
-          subprocess.run(['node', '--check', 'src/web/printer.js'], check=True)
+          subprocess.run(['cp', 'src/web/canvas.js', '/tmp/canvas.mjs'], check=True)
+          subprocess.run(['cp', 'src/web/app.js', '/tmp/app.mjs'], check=True)
+          subprocess.run(['cp', 'src/web/printer.js', '/tmp/printer.mjs'], check=True)
+          subprocess.run(['node', '--check', '/tmp/canvas.mjs'], check=True)
+          subprocess.run(['node', '--check', '/tmp/app.mjs'], check=True)
+          subprocess.run(['node', '--check', '/tmp/printer.mjs'], check=True)
           print('SECOND PASS: OK')
           PY
