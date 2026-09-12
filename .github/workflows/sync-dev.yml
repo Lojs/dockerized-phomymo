@@ -1,0 +1,30 @@
+name: Sync Dev with Upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge upstream into dev
+        run: |
+          git remote add upstream https://github.com/transcriptionstream/phomymo.git
+          git fetch upstream master
+
+          git checkout dev
+          git pull origin dev
+
+          git merge upstream/master --no-edit
+
+          git push origin dev
