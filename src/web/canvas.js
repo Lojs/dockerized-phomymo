@@ -2256,7 +2256,7 @@ export class CanvasRenderer {
    * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
    * @param {'left' | 'center' | 'right'} alignment - How to align label within printer width (default: 'center')
    */
-  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto', alignment = 'center') {
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto', alignment = 'center', rotateForPrint = false) {
     let { pixels, width, height } = this._renderToPixels(elements);
 
     // Scale up for higher DPI printers (e.g., M02 Pro at 300 DPI)
