@@ -2215,10 +2215,10 @@ export class CanvasRenderer {
   }
 
   /**
-   * Rotate RGBA pixel data 90 degrees clockwise
+   * Rotate RGBA pixel data 90 degrees counter-clockwise
    * Used when landscape designs need to be printed on portrait-oriented paper.
    */
-  _rotatePixels90CW(pixels, width, height) {
+  _rotatePixels90CCW(pixels, width, height) {
     const rotatedWidth = height;
     const rotatedHeight = width;
     const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
@@ -2227,9 +2227,9 @@ export class CanvasRenderer {
       for (let x = 0; x < width; x++) {
         const srcIndex = (y * width + x) * 4;
 
-        // 90° clockwise: (x, y) -> (height - 1 - y, x)
-        const dstX = height - 1 - y;
-        const dstY = x;
+        // 90° counter-clockwise: (x, y) -> (y, width - 1 - x)
+        const dstX = y;
+        const dstY = width - 1 - x;
         const dstIndex = (dstY * rotatedWidth + dstX) * 4;
 
         rotated[dstIndex] = pixels[srcIndex];
@@ -2293,7 +2293,7 @@ export class CanvasRenderer {
 
     // Rotate landscape design back to the physical paper orientation before printing
     if (rotateForPrint) {
-      const rotated = this._rotatePixels90CW(pixels, width, height);
+      const rotated = this._rotatePixels90CCW(pixels, width, height);
       pixels = rotated.pixels;
       width = rotated.width;
       height = rotated.height;
