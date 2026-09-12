@@ -1134,6 +1134,25 @@ function updatePrintSize() {
   }
 }
 
+function updateRendererDimensions() {
+  const { width, height, round } = state.labelSize;
+
+  if (round || state.orientation === 'portrait') {
+    state.renderer.setDimensions(
+      width,
+      height,
+      state.zoom,
+      round || false
+    );
+  } else {
+    state.renderer.setDimensions(
+      height,
+      width,
+      state.zoom,
+      false
+    );
+  }
+}
 /**
  * Update zoom level display and re-render at new resolution
  */
