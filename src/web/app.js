@@ -878,7 +878,7 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
     // Pick default based on printer type
     select.value = defaultKey;
     state.labelSize = { ...LABEL_SIZES[defaultKey] };
-    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
+    updateRendererDimensions();
     state.renderer.clearCache();
     updatePrintSize();
     // Auto zoom-to-fit if label is too large at 100% zoom
