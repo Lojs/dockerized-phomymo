@@ -2215,6 +2215,38 @@ export class CanvasRenderer {
   }
 
   /**
+   * Rotate RGBA pixel data 90 degrees clockwise
+   * Used when landscape designs need to be printed on portrait-oriented paper.
+   */
+  _rotatePixels90CW(pixels, width, height) {
+    const rotatedWidth = height;
+    const rotatedHeight = width;
+    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIndex = (y * width + x) * 4;
+
+        // 90° clockwise: (x, y) -> (height - 1 - y, x)
+        const dstX = height - 1 - y;
+        const dstY = x;
+        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
+
+        rotated[dstIndex] = pixels[srcIndex];
+        rotated[dstIndex + 1] = pixels[srcIndex + 1];
+        rotated[dstIndex + 2] = pixels[srcIndex + 2];
+        rotated[dstIndex + 3] = pixels[srcIndex + 3];
+      }
+    }
+
+    return {
+      pixels: rotated,
+      width: rotatedWidth,
+      height: rotatedHeight,
+    };
+  }
+
+  /**
    * Convert pixel data to raster bytes
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
@@ -2258,6 +2290,14 @@ export class CanvasRenderer {
    */
   getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto', alignment = 'center', rotateForPrint = false) {
     let { pixels, width, height } = this._renderToPixels(elements);
+
+    // Rotate landscape design back to the physical paper orientation before printing
+    if (rotateForPrint) {
+      const rotated = this._rotatePixels90CW(pixels, width, height);
+      pixels = rotated.pixels;
+      width = rotated.width;
+      height = rotated.height;
+    }
 
     // Scale up for higher DPI printers (e.g., M02 Pro at 300 DPI)
     if (printerDpi > 203) {
