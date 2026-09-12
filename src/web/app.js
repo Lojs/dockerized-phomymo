@@ -2476,7 +2476,7 @@ function handleLabelSizeChange() {
     exitMultiLabelMode();
   }
 
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
+  updateRendererDimensions();
   updatePrintSize();
   updateLengthAdjustButtons();
 
@@ -2508,7 +2508,7 @@ function handleCustomSizeChange() {
   }
 
   state.labelSize = { width: w, height: h, round: isRound, continuous: isContinuous };
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, isRound);
+  updateRendererDimensions();
   updatePrintSize();
   updateLengthAdjustButtons();
 
