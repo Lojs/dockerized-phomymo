@@ -10,12 +10,11 @@ on:
       - "Dockerfile"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/docker.yml"
 
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 env:
@@ -30,92 +29,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
-      - name: Apply landscape rotation correction
-        if: github.ref_name == 'dev'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/web/canvas.js')
-          s = p.read_text()
-          old = '''  _rotatePixels90CW(pixels, width, height) {
-    const rotatedWidth = height;
-    const rotatedHeight = width;
-    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const srcIndex = (y * width + x) * 4;
-
-        // 90° clockwise: (x, y) -> (height - 1 - y, x)
-        const dstX = height - 1 - y;
-        const dstY = x;
-        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
-
-        rotated[dstIndex] = pixels[srcIndex];
-        rotated[dstIndex + 1] = pixels[srcIndex + 1];
-        rotated[dstIndex + 2] = pixels[srcIndex + 2];
-        rotated[dstIndex + 3] = pixels[srcIndex + 3];
-      }
-    }
-
-    return {
-      pixels: rotated,
-      width: rotatedWidth,
-      height: rotatedHeight,
-    };
-  }
-'''
-          new = '''  _rotatePixels90CCW(pixels, width, height) {
-    const rotatedWidth = height;
-    const rotatedHeight = width;
-    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const srcIndex = (y * width + x) * 4;
-
-        // 90° counter-clockwise: (x, y) -> (y, width - 1 - x)
-        const dstX = y;
-        const dstY = width - 1 - x;
-        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
-
-        rotated[dstIndex] = pixels[srcIndex];
-        rotated[dstIndex + 1] = pixels[srcIndex + 1];
-        rotated[dstIndex + 2] = pixels[srcIndex + 2];
-        rotated[dstIndex + 3] = pixels[srcIndex + 3];
-      }
-    }
-
-    return {
-      pixels: rotated,
-      width: rotatedWidth,
-      height: rotatedHeight,
-    };
-  }
-'''
-          if old not in s:
-              raise SystemExit('Expected rotation function not found')
-          s = s.replace(old, new)
-          s = s.replace('const rotated = this._rotatePixels90CW(pixels, width, height);', 'const rotated = this._rotatePixels90CCW(pixels, width, height);')
-          s = s.replace('Rotate RGBA pixel data 90 degrees clockwise\n   * Used when landscape designs need to be printed on portrait-oriented paper.', 'Rotate RGBA pixel data 90 degrees counter-clockwise\n   * Used when landscape designs need to be printed on portrait-oriented paper.')
-          p.write_text(s)
-          PY
-
-          node --check src/web/canvas.js
-
-          # Remove the failed temporary workflow from the branch.
-          rm -f .github/workflows/_fix_landscape_rotation.yml
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/web/canvas.js .github/workflows/_fix_landscape_rotation.yml
-          if ! git diff --cached --quiet; then
-            git commit -m 'Fix landscape print rotation direction [skip ci]'
-            git push origin HEAD:dev
-          fi
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
