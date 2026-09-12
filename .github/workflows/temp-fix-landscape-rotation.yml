@@ -1,0 +1,115 @@
+name: Temporary Landscape Rotation Fix
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/temp-fix-landscape-rotation.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'fix landscape raster rotation') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch rotation direction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/web/canvas.js')
+          text = path.read_text()
+
+          old = '''  /**
+   * Rotate RGBA pixel data 90 degrees clockwise
+   * Used when landscape designs need to be printed on portrait-oriented paper.
+   */
+  _rotatePixels90CW(pixels, width, height) {
+    const rotatedWidth = height;
+    const rotatedHeight = width;
+    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIndex = (y * width + x) * 4;
+
+        // 90° clockwise: (x, y) -> (height - 1 - y, x)
+        const dstX = height - 1 - y;
+        const dstY = x;
+        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
+
+        rotated[dstIndex] = pixels[srcIndex];
+        rotated[dstIndex + 1] = pixels[srcIndex + 1];
+        rotated[dstIndex + 2] = pixels[srcIndex + 2];
+        rotated[dstIndex + 3] = pixels[srcIndex + 3];
+      }
+    }
+
+    return {
+      pixels: rotated,
+      width: rotatedWidth,
+      height: rotatedHeight,
+    };
+  }
+'''
+
+          new = '''  /**
+   * Rotate RGBA pixel data 90 degrees counter-clockwise
+   * Used when landscape designs need to be printed on portrait-oriented paper.
+   */
+  _rotatePixels90CCW(pixels, width, height) {
+    const rotatedWidth = height;
+    const rotatedHeight = width;
+    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIndex = (y * width + x) * 4;
+
+        // 90° counter-clockwise: (x, y) -> (y, width - 1 - x)
+        const dstX = y;
+        const dstY = width - 1 - x;
+        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
+
+        rotated[dstIndex] = pixels[srcIndex];
+        rotated[dstIndex + 1] = pixels[srcIndex + 1];
+        rotated[dstIndex + 2] = pixels[srcIndex + 2];
+        rotated[dstIndex + 3] = pixels[srcIndex + 3];
+      }
+    }
+
+    return {
+      pixels: rotated,
+      width: rotatedWidth,
+      height: rotatedHeight,
+    };
+  }
+'''
+
+          if old not in text:
+              raise SystemExit('Expected rotation function was not found; refusing to modify the file.')
+
+          text = text.replace(old, new, 1)
+          text = text.replace('this._rotatePixels90CW(pixels, width, height)', 'this._rotatePixels90CCW(pixels, width, height)', 1)
+          path.write_text(text)
+          PY
+
+      - name: Verify patch
+        run: |
+          grep -n -A28 -B2 "_rotatePixels90CCW" src/web/canvas.js
+          grep -n "_rotatePixels90CW" src/web/canvas.js && exit 1 || true
+
+      - name: Remove temporary workflow and commit
+        run: |
+          rm .github/workflows/temp-fix-landscape-rotation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/web/canvas.js .github/workflows/temp-fix-landscape-rotation.yml
+          git commit -m "fix landscape raster rotation"
+          git push
