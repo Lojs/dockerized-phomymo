@@ -4805,9 +4805,20 @@ async function handlePrint() {
       ditherMode = 'threshold';
       console.log('TSPL printer: forcing threshold mode for crisp barcodes');
     }
-    const rasterData = isRotatedPrinter(deviceName, printerModel)
-      ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
-      : state.renderer.getRasterData(elementsToRender, printerWidth, printerDpi, ditherMode, printerAlignment);
+    const rotateForPrint =
+      state.orientation === 'landscape' &&
+      !isRotatedPrinter(deviceName, printerModel);
+
+   const rasterData = isRotatedPrinter(deviceName, printerModel)
+     ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
+     : state.renderer.getRasterData(
+        elementsToRender,
+        printerWidth,
+        printerDpi,
+        ditherMode,
+        printerAlignment,
+        rotateForPrint
+      );
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
