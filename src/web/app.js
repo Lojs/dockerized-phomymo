@@ -5077,8 +5077,15 @@ function handleExportPDF() {
   state.renderer.renderAllToContext(tempCtx, elementsToRender, []);
 
   // Get label dimensions in mm
-  const widthMm = state.labelSize.width;
-  const heightMm = state.labelSize.height;
+  const widthMm =
+    state.orientation === 'landscape'
+      ? state.labelSize.height
+      : state.labelSize.width;
+
+  const heightMm =
+    state.orientation === 'landscape'
+      ? state.labelSize.width
+      : state.labelSize.height;
 
   // Create PDF with exact label dimensions
   const { jsPDF } = window.jspdf;
