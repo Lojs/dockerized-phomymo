@@ -10,11 +10,12 @@ on:
       - "Dockerfile"
       - "package.json"
       - "package-lock.json"
+      - ".github/workflows/docker.yml"
 
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -29,6 +30,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Apply landscape rotation fix on dev
+        if: github.ref_name == 'dev'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('src/web/canvas.js')
+          s = p.read_text()
+          if '_rotatePixels90CW' not in s:
+              print('Landscape rotation fix already applied.')
+          else:
+              s = s.replace('_rotatePixels90CW', '_rotatePixels90CCW')
+              s = s.replace('Rotate RGBA pixel data 90 degrees clockwise', 'Rotate RGBA pixel data 90 degrees counter-clockwise')
+              s = s.replace('const dstX = height - 1 - y;\n      const dstY = x;', 'const dstX = y;\n      const dstY = width - 1 - x;')
+              p.write_text(s)
+              print('Landscape rotation fix applied.')
+          PY
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -55,3 +75,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Commit landscape rotation fix and remove temporary automation
+        if: github.ref_name == 'dev'
+        shell: bash
+        run: |
+          if git diff --quiet -- src/web/canvas.js; then
+            echo 'No source change to commit.'
+            exit 0
+          fi
+          rm -f .github/workflows/fix-landscape-rotation.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/web/canvas.js .github/workflows/fix-landscape-rotation.yml
+          git commit -m 'fix landscape raster rotation'
+          git push
