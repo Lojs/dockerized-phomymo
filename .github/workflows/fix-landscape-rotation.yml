@@ -1,7 +1,8 @@
 name: Apply Landscape Rotation Fix
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [dev]
 
 permissions:
   contents: write
