@@ -1967,9 +1967,19 @@ async function handleBatchPrint() {
       if (ditherMode === 'auto' && isTSPLPrinter(deviceName, printerModel)) {
         ditherMode = 'threshold';
       }
+      const rotateForPrint =
+        state.orientation === 'landscape' &&
+        !isRotatedPrinter(deviceName, printerModel);
       const rasterData = isRotatedPrinter(deviceName, printerModel)
-        ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
-        : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
+        ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
+        : state.renderer.getRasterData(
+          elementsToRender,
+          printerWidth,
+          printerDpi,
+          ditherMode,
+          printerAlignment,
+          rotateForPrint
+        );
 
       // Print
       await print(state.transport, rasterData, {
