@@ -1,0 +1,115 @@
+name: Fix landscape rotation
+on:
+  push:
+    branches: [dev]
+    paths: ['.github/workflows/_fix_landscape_rotation.yml']
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - name: Patch rotation direction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/web/canvas.js')
+          s = p.read_text()
+          old = '''  _rotatePixels90CW(pixels, width, height) {
+    const rotatedWidth = height;
+    const rotatedHeight = width;
+    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIndex = (y * width + x) * 4;
+
+        // 90° clockwise: (x, y) -> (height - 1 - y, x)
+        const dstX = height - 1 - y;
+        const dstY = x;
+        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
+
+        rotated[dstIndex] = pixels[srcIndex];
+        rotated[dstIndex + 1] = pixels[srcIndex + 1];
+        rotated[dstIndex + 2] = pixels[srcIndex + 2];
+        rotated[dstIndex + 3] = pixels[srcIndex + 3];
+      }
+    }
+
+    return {
+      pixels: rotated,
+      width: rotatedWidth,
+      height: rotatedHeight,
+    };
+  }
+'''
+          new = '''  _rotatePixels90CCW(pixels, width, height) {
+    const rotatedWidth = height;
+    const rotatedHeight = width;
+    const rotated = new Uint8ClampedArray(rotatedWidth * rotatedHeight * 4);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcIndex = (y * width + x) * 4;
+
+        // 90° counter-clockwise: (x, y) -> (y, width - 1 - x)
+        const dstX = y;
+        const dstY = width - 1 - x;
+        const dstIndex = (dstY * rotatedWidth + dstX) * 4;
+
+        rotated[dstIndex] = pixels[srcIndex];
+        rotated[dstIndex + 1] = pixels[srcIndex + 1];
+        rotated[dstIndex + 2] = pixels[srcIndex + 2];
+        rotated[dstIndex + 3] = pixels[srcIndex + 3];
+      }
+    }
+
+    return {
+      pixels: rotated,
+      width: rotatedWidth,
+      height: rotatedHeight,
+    };
+  }
+'''
+          if old not in s:
+              raise SystemExit('Expected CW rotation function not found')
+          s = s.replace(old, new)
+          s = s.replace('const rotated = this._rotatePixels90CW(pixels, width, height);', 'const rotated = this._rotatePixels90CCW(pixels, width, height);')
+          s = s.replace('Rotate RGBA pixel data 90 degrees clockwise\n   * Used when landscape designs need to be printed on portrait-oriented paper.', 'Rotate RGBA pixel data 90 degrees counter-clockwise\n   * Used when landscape designs need to be printed on portrait-oriented paper.')
+          p.write_text(s)
+
+          p = Path('src/web/app.js')
+          s = p.read_text()
+          s = s.replace("'./canvas.js?v=115'", "'./canvas.js?v=116'")
+          s = s.replace("'./printer.js?v=128'", "'./printer.js?v=129'")
+          p.write_text(s)
+          PY
+
+          node --check <(sed '1d' src/web/app.js) 2>/dev/null || true
+          node --check src/web/canvas.js
+          git status --short
+          git diff -- src/web/canvas.js src/web/app.js
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/web/canvas.js src/web/app.js
+          git commit -m 'Fix landscape raster rotation direction [skip ci]'
+          git push origin HEAD:dev
+
+      - name: Remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/_fix_landscape_rotation.yml
+          git commit -m 'Remove temporary landscape rotation workflow [skip ci]'
+          git push origin HEAD:dev
