@@ -1970,6 +1970,9 @@ async function handleBatchPrint() {
       const rotateForPrint =
         state.orientation === 'landscape' &&
         !isRotatedPrinter(deviceName, printerModel);
+      const rasterAlignment =
+        state.orientation === 'landscape' ? 'left' : printerAlignment;
+
       const rasterData = isRotatedPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
         : state.renderer.getRasterData(
@@ -1977,7 +1980,7 @@ async function handleBatchPrint() {
           printerWidth,
           printerDpi,
           ditherMode,
-          printerAlignment,
+          rasterAlignment,
           rotateForPrint
         );
 
@@ -2064,9 +2067,23 @@ async function handlePrintSinglePreview() {
     if (ditherMode === 'auto' && isTSPLPrinter(deviceName, printerModel)) {
       ditherMode = 'threshold';
     }
+    const rotateForPrint =
+      state.orientation === 'landscape' &&
+      !isRotatedPrinter(deviceName, printerModel);
+
+    const rasterAlignment =
+      state.orientation === 'landscape' ? 'left' : printerAlignment;
+
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
-      : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
+      : state.renderer.getRasterData(
+        mergedElements,
+        printerWidth,
+        203,
+        ditherMode,
+        rasterAlignment,
+        rotateForPrint
+      );
 
     // Print
     await print(state.transport, rasterData, {
@@ -4809,16 +4826,19 @@ async function handlePrint() {
       state.orientation === 'landscape' &&
       !isRotatedPrinter(deviceName, printerModel);
 
-   const rasterData = isRotatedPrinter(deviceName, printerModel)
-     ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
-     : state.renderer.getRasterData(
-        elementsToRender,
-        printerWidth,
-        printerDpi,
-        ditherMode,
-        printerAlignment,
-        rotateForPrint
-      );
+    const rasterAlignment =
+      state.orientation === 'landscape' ? 'left' : printerAlignment;
+
+    const rasterData = isRotatedPrinter(deviceName, printerModel)
+      ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
+      : state.renderer.getRasterData(
+         elementsToRender,
+         printerWidth,
+         printerDpi,
+         ditherMode,
+         rasterAlignment,
+         rotateForPrint
+       );
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
