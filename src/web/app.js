@@ -4898,6 +4898,7 @@ function handleSave() {
     const designData = {
       elements: state.elements,
       labelSize: state.labelSize,
+      orientation: state.orientation,
     };
 
     // Include template data if present
