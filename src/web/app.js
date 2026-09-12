@@ -1998,8 +1998,7 @@ async function handleBatchPrint() {
       const rotateForPrint =
         state.orientation === 'landscape' &&
         !isRotatedPrinter(deviceName, printerModel);
-      const rasterAlignment =
-        state.orientation === 'landscape' ? 'left' : printerAlignment;
+      const rasterAlignment = printerAlignment;
 
       const rasterData = isRotatedPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
