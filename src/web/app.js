@@ -142,6 +142,7 @@ let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES, ...M_SERIES_ROUND_LABELS };
 const state = {
   connectionType: 'ble',
   labelSize: { width: 40, height: 30 },
+  orientation: 'portrait',
   tapeWidth: 12,  // Tape width in mm for tape printers (P12/A30), default 12mm
   elements: [],
   selectedIds: [],  // Array of selected element IDs (supports multi-select)
