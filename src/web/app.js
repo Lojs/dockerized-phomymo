@@ -7124,6 +7124,23 @@ function init() {
   $('#custom-round').addEventListener('change', handleCustomSizeChange);
   $('#custom-continuous')?.addEventListener('change', handleCustomSizeChange);
 
+  // Design orientation
+$('#orientation').addEventListener('change', (event) => {
+state.orientation = event.target.value;
+updateRendererDimensions();
+
+// Round labels do not use orientation
+if (state.labelSize.round) {
+  state.orientation = 'portrait';
+  $('#orientation').value = 'portrait';
+}
+
+zoomToFitIfNeeded();
+render();
+
+});
+
+
   // P12/A30 label length adjust buttons
   $('#length-plus')?.addEventListener('click', () => adjustLabelLength(5));
   $('#length-minus')?.addEventListener('click', () => adjustLabelLength(-5));
